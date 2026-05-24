@@ -1,4 +1,4 @@
-package com.example.voice_vault
+package com.chathuranga.voicevault
 
 import io.flutter.embedding.android.FlutterActivity
 
