@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../models/recording.dart';
-import '../services/recording_service.dart';
+import '../services/recording_service.dart' show RecordingService, StorageException;
+import '../services/waveform_service.dart';
+import '../widgets/waveform_bar.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,6 +18,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final _service = RecordingService();
+  final _waveforms = WaveformService();
   final _recorder = AudioRecorder();
   final _player = AudioPlayer();
 
@@ -28,6 +31,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _isPaused = false;
   Duration _playPos = Duration.zero;
   Duration _playDur = Duration.zero;
+  final Map<String, List<double>> _peaks = {};
 
   late final AnimationController _waveAnim;
   late final AnimationController _pulseAnim;
@@ -56,8 +60,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _loadRecordings() async {
-    final list = await _service.load();
-    setState(() => _recordings = list.reversed.toList());
+    try {
+      final list = await _service.load();
+      setState(() => _recordings = list.reversed.toList());
+    } on StorageException catch (e) {
+      // Index is gone (or corrupt) but the underlying audio files are still on
+      // disk. Show the user what happened and how to recover.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), duration: const Duration(seconds: 6)),
+        );
+      }
+    }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 4)),
+    );
   }
 
   Future<void> _startRecording() async {
@@ -109,7 +130,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _isRecording = false;
       _recDuration = Duration.zero;
     });
-    await _service.save(_recordings);
+    try {
+      await _service.save(_recordings);
+    } on StorageException catch (e) {
+      _showError(e.message);
+    }
   }
 
   Future<void> _togglePlay(Recording rec) async {
@@ -131,6 +156,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       await _player.play(
         kIsWeb ? UrlSource(rec.filePath) : DeviceFileSource(rec.filePath),
       );
+      // Lazy-load waveform peaks on first play; subsequent plays reuse cache.
+      if (_peaks[rec.id] == null) {
+        _waveforms.getOrCompute(rec).then((p) {
+          if (!mounted || p.isEmpty) return;
+          setState(() => _peaks[rec.id] = p);
+        });
+      }
     }
   }
 
@@ -174,7 +206,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
     if (name != null && name.isNotEmpty && name != rec.name) {
       setState(() => rec.name = name);
-      await _service.save(_recordings);
+      try {
+        await _service.save(_recordings);
+      } on StorageException catch (e) {
+        _showError(e.message);
+      }
     }
   }
 
@@ -213,8 +249,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       });
     }
     await _service.deleteFile(rec.filePath);
-    setState(() => _recordings.remove(rec));
-    await _service.save(_recordings);
+    await _waveforms.deleteCache(rec.id);
+    setState(() {
+      _recordings.remove(rec);
+      _peaks.remove(rec.id);
+    });
+    try {
+      await _service.save(_recordings);
+    } on StorageException catch (e) {
+      _showError(e.message);
+    }
   }
 
   @override
@@ -336,6 +380,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           isPlaying: isPlaying,
           isActive: isActive,
           progress: progress,
+          peaks: _peaks[rec.id],
           durationLabel: isActive ? _fmtDur(_playPos) : rec.formattedDuration,
           dateLabel: _fmtDate(rec.createdAt),
           onPlayPause: () => _togglePlay(rec),
@@ -451,6 +496,7 @@ class _RecordingCard extends StatelessWidget {
   final bool isPlaying;
   final bool isActive;
   final double progress;
+  final List<double>? peaks;
   final String durationLabel;
   final String dateLabel;
   final VoidCallback onPlayPause;
@@ -463,6 +509,7 @@ class _RecordingCard extends StatelessWidget {
     required this.isPlaying,
     required this.isActive,
     required this.progress,
+    required this.peaks,
     required this.durationLabel,
     required this.dateLabel,
     required this.onPlayPause,
@@ -601,7 +648,9 @@ class _RecordingCard extends StatelessWidget {
               ],
             ),
           ),
-          if (isActive)
+          if (isActive && peaks != null && peaks!.isNotEmpty)
+            WaveformBar(peaks: peaks!, progress: progress)
+          else if (isActive)
             ClipRRect(
               borderRadius: const BorderRadius.vertical(
                 bottom: Radius.circular(14),
