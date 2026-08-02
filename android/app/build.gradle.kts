@@ -6,7 +6,9 @@ plugins {
 
 android {
     namespace = "com.chathuranga.voicevault"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned explicitly so Flutter SDK upgrades cannot silently shift the target.
+    // record 5.x requires minSdk >= 23. compileSdk = latest stable (35).
+    compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -15,12 +17,9 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.chathuranga.voicevault"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 23
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
