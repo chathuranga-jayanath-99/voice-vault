@@ -5,6 +5,9 @@ version: 1.0.0+1
 
 environment:
   sdk: ^3.12.0
+  # Pinned so CI installs a deterministic Flutter release.
+  # flutter-action reads this via `flutter-version-file: pubspec.yaml`.
+  flutter: "3.44.0"
 
 dependencies:
   flutter:
