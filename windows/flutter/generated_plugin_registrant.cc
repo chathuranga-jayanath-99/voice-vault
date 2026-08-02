@@ -6,10 +6,13 @@
 
 #include "generated_plugin_registrant.h"
 
+#include <audio_decoder/audio_decoder_plugin_c_api.h>
 #include <audioplayers_windows/audioplayers_windows_plugin.h>
 #include <record_windows/record_windows_plugin_c_api.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
+  AudioDecoderPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("AudioDecoderPluginCApi"));
   AudioplayersWindowsPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("AudioplayersWindowsPlugin"));
   RecordWindowsPluginCApiRegisterWithRegistrar(
